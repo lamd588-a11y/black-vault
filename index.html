@@ -1,590 +1,537 @@
 <!DOCTYPE html>
-<html lang="zh-HK">
+<html lang="zh-HK" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>黑匣</title>
-  
-  <!-- PWA & iOS 主畫面設定 -->
-  <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIuSRkeiAocIsCiAgInNob3J0X25hbWUiOiAi6buR54S1IiwKICAic3RhcnRfdXJsIjogIi4vIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjMTIxMjEyIiwKICAidGhlbWVfY29sb3IiOiAiIzEyMTIxMiIsCiAgImljb25zIjogWwogICAgewogICAgICAic3JjIjogImljb24ucG5nIiwKICAgICAgInNpemVzIjogIjE5MngxOTIiLAogICAgICAidHlwZSI6ICJpbWFnZS9wbmciCiAgICB9LAogICAgewogICAgICAic3JjIjogImljb24ucG5nIiwKICAgICAgInNpemVzIjogIjUxMng1MTIiLAogICAgICAidHlwZSI6ICJpbWFnZS9wbmciCiAgICB9CiAgXQp9">
-  <link rel="apple-touch-icon" href="icon.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="黑匣">
-
-  <!-- jsPDF & html2pdf.js 庫 (用於生成 PDF) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
-  <style>
-    :root {
-      --bg-primary: #f4f5f7;
-      --bg-card: #ffffff;
-      --text-color: #1c1c1e;
-      --border-color: #e5e5ea;
-      --accent: #007aff;
-      --danger: #ff3b30;
-      --header-bg: #ffffff;
-      --mask-bg: rgba(0, 0, 0, 0.5);
-    }
-
-    [data-theme="dark"] {
-      --bg-primary: #121212;
-      --bg-card: #1e1e1e;
-      --text-color: #f2f2f7;
-      --border-color: #2c2c2e;
-      --accent: #0a84ff;
-      --danger: #ff453a;
-      --header-bg: #1e1e1e;
-      --mask-bg: rgba(0, 0, 0, 0.8);
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; user-select: none; }
-    body { background-color: var(--bg-primary); color: var(--text-color); -webkit-tap-highlight-color: transparent; }
-
-    /* 解鎖頁面 */
-    #lock-screen {
-      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-      background: var(--bg-primary); z-index: 9999;
-      display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
-    }
-    .app-logo { width: 90px; height: 90px; border-radius: 20px; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-    .lock-title { font-size: 24px; font-weight: bold; margin-bottom: 20px; }
-
-    /* 通用 UI */
-    input, select, textarea, button {
-      font-size: 16px; padding: 12px; border-radius: 10px; border: 1px solid var(--border-color);
-      background-color: var(--bg-card); color: var(--text-color); outline: none; width: 100%; margin-bottom: 12px;
-    }
-    button { background-color: var(--accent); color: white; border: none; font-weight: 600; cursor: pointer; }
-    button.secondary { background-color: #8e8e93; }
-    button.danger { background-color: var(--danger); }
-
-    .header {
-      position: sticky; top: 0; background-color: var(--header-bg); padding: 15px; padding-top: max(15px, env(safe-area-inset-top));
-      border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; z-index: 100;
-    }
-    .header-left { display: flex; align-items: center; gap: 10px; }
-    .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #ccc; cursor: pointer; }
-    .container { padding: 15px; padding-bottom: 80px; max-width: 600px; margin: 0 auto; }
-
-    /* 分類標籤 (拖拉) */
-    .categories-bar { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 10px; }
-    .cat-chip {
-      padding: 6px 14px; border-radius: 20px; background: var(--bg-card); border: 1px solid var(--border-color);
-      white-space: nowrap; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 4px;
-    }
-    .cat-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
-
-    /* 密碼卡片 */
-    .card {
-      background: var(--bg-card); border-radius: 12px; padding: 15px; margin-bottom: 12px;
-      border: 1px solid var(--border-color); box-shadow: 0 2px 5px rgba(0,0,0,0.03);
-    }
-    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .card-title { font-weight: bold; font-size: 18px; }
-    .field { font-size: 14px; margin-top: 6px; word-break: break-all; user-select: text; }
-    .field span.blur { filter: blur(5px); transition: filter 0.2s; }
-    .actions { display: flex; gap: 10px; margin-top: 10px; }
-    .actions button { padding: 6px 12px; font-size: 12px; margin-bottom: 0; }
-
-    /* 浮動新增按鈕 */
-    .fab {
-      position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); right: 20px;
-      width: 56px; height: 56px; border-radius: 28px; background: var(--accent); color: white;
-      font-size: 28px; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 99;
-    }
-
-    /* Modal 彈窗 */
-    .modal {
-      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-      background: var(--mask-bg); display: none; justify-content: center; align-items: flex-end; z-index: 1000;
-    }
-    .modal-content {
-      background: var(--bg-card); width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto;
-      border-radius: 20px 20px 0 0; padding: 20px; padding-bottom: max(20px, env(safe-area-inset-bottom));
-    }
-
-    /* PDF 導出專用簡潔樣式 */
-    #pdf-template { display: none; background: #fff; color: #000; padding: 10px; font-size: 10px; }
-    #pdf-template table { width: 100%; border-collapse: collapse; }
-    #pdf-template th, #pdf-template td { border: 1px solid #ccc; padding: 3px 5px; text-align: left; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="黑匣">
+    <link rel="apple-touch-icon" href="./icon.png">
+    <link rel="manifest" href="./manifest.json">
+    <title>黑匣</title>
+    
+    <!-- 引入庫 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    
+    <style>
+        /* 針對 iPhone 安全區域的 Padding */
+        .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
+        .safe-pt { padding-top: env(safe-area-inset-top); }
+        
+        /* 隱藏滾動條 */
+        ::-webkit-scrollbar { display: none; }
+        
+        /* PDF 打印排版 (每頁 40-50 項目) */
+        @media print {
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area { position: absolute; left: 0; top: 0; width: 100%; }
+            .print-table { width: 100%; border-collapse: collapse; font-size: 8pt; line-height: 1.1; }
+            .print-table th, .print-table td { border: 1px solid #000; padding: 2px 4px; word-break: break-all; }
+            .no-print { display: none !important; }
+        }
+    </style>
 </head>
-<body>
+<body class="bg-gray-100 dark:bg-zinc-900 text-gray-900 dark:text-gray-100 transition-colors duration-300 antialiased selection:bg-blue-500 selection:text-white">
 
-  <!-- 解鎖 / 設定密碼畫面 -->
-  <div id="lock-screen">
-    <img src="icon.png" class="app-logo" alt="黑匣">
-    <div class="lock-title">黑匣 BlackBox</div>
-    <p id="lock-msg" style="margin-bottom: 15px; font-size: 14px; color: #8e8e93;">請輸入登入密碼</p>
-    <input type="password" id="unlock-pass" placeholder="輸入解鎖密碼" style="max-width: 280px; text-align: center;">
-    <button onclick="unlockApp()" style="max-width: 280px;">解鎖</button>
-  </div>
-
-  <!-- 主介面 -->
-  <div class="header">
-    <div class="header-left">
-      <label for="avatar-input">
-        <img id="user-avatar" src="icon.png" class="avatar" title="點擊更換頭像">
-      </label>
-      <input type="file" id="avatar-input" accept="image/*" style="display:none;" onchange="changeAvatar(event)">
-      <h2 style="font-size: 20px;">黑匣</h2>
+<div id="app" class="h-screen w-full max-w-md mx-auto relative overflow-hidden flex flex-col bg-white dark:bg-black shadow-2xl">
+    
+    <!-- PDF 列印專用區域 (平時隱藏) -->
+    <div id="print-area" class="hidden absolute top-0 left-0 w-full bg-white text-black p-4 z-0">
+        <h2 class="text-xl font-bold mb-2 text-center">黑匣 - 密碼匯出</h2>
+        <table class="print-table">
+            <thead><tr><th>分類</th><th>名稱</th><th>登入名稱</th><th>密碼</th><th>備註</th></tr></thead>
+            <tbody>
+                <tr v-for="item in decryptedVault" :key="item.id">
+                    <td>{{ item.category }}</td>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.username }}</td>
+                    <td>{{ item.password }}</td>
+                    <td>{{ item.note }}</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
-    <div style="display:flex; gap: 8px;">
-      <button onclick="toggleTheme()" style="width:auto; padding: 6px 10px; font-size:12px;">🌓 主題</button>
-      <button onclick="openSettings()" class="secondary" style="width:auto; padding: 6px 10px; font-size:12px;">⚙️ 設定</button>
-    </div>
-  </div>
 
-  <div class="container">
-    <input type="text" id="search-input" placeholder="🔍 搜尋項目名稱、帳號、備註..." oninput="renderItems()">
-
-    <!-- 可拖拉排序的分類列 -->
-    <div class="categories-bar" id="categories-bar"></div>
-
-    <div id="item-list"></div>
-  </div>
-
-  <div class="fab" onclick="openItemModal()">+</div>
-
-  <!-- 項目新增/修改 Modal -->
-  <div class="modal" id="item-modal">
-    <div class="modal-content">
-      <h3 id="modal-title" style="margin-bottom: 15px;">新增密碼項目</h3>
-      <input type="hidden" id="edit-id">
-      <input type="text" id="item-title" placeholder="項目名稱 (例如: Gmail)">
-      <input type="text" id="item-username" placeholder="登入名稱/電郵/帳號">
-      <input type="text" id="item-password" placeholder="密碼">
-      <select id="item-category"></select>
-      <textarea id="item-notes" placeholder="備註 (不限字數)" rows="3"></textarea>
-      <button onclick="saveItem()">儲存</button>
-      <button onclick="closeModal('item-modal')" class="secondary">取消</button>
-    </div>
-  </div>
-
-  <!-- 設定與資料管理 Modal -->
-  <div class="modal" id="settings-modal">
-    <div class="modal-content">
-      <h3 style="margin-bottom: 15px;">系統設定與資料</h3>
-      
-      <button onclick="openCatManager()" class="secondary">管理分類</button>
-      <button onclick="exportPDF()" style="background:#34c759;">📄 匯出為 PDF (高密度)</button>
-      <button onclick="exportJSON()" class="secondary">⬇️ 匯出 JSON 備份檔</button>
-      <button onclick="document.getElementById('import-file').click()" class="secondary">⬆️ 匯入 JSON 備份檔</button>
-      <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(event)">
-      
-      <hr style="margin: 15px 0; border:0; border-top:1px solid var(--border-color);">
-      
-      <button onclick="changeAppPassword()" class="danger">修改主解鎖密碼</button>
-      <button onclick="closeModal('settings-modal')" class="secondary">關閉</button>
-    </div>
-  </div>
-
-  <!-- 分類管理 Modal -->
-  <div class="modal" id="cat-modal">
-    <div class="modal-content">
-      <h3>管理分類 (支援拖拽排序)</h3>
-      <div style="display:flex; gap:5px; margin: 10px 0;">
-        <input type="text" id="new-cat-name" placeholder="新分類名稱" style="margin-bottom:0;">
-        <button onclick="addCategory()" style="width:80px;">新增</button>
-      </div>
-      <div id="cat-list-manage"></div>
-      <button onclick="closeModal('cat-modal')" class="secondary" style="margin-top:10px;">完成</button>
-    </div>
-  </div>
-
-  <!-- PDF 生成隱藏模版 (緊湊高密度 40-50項/頁) -->
-  <div id="pdf-template">
-    <h2 style="text-align:center; margin-bottom: 8px;">黑匣 - 密碼紀錄表</h2>
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 15%;">分類</th>
-          <th style="width: 20%;">項目</th>
-          <th style="width: 25%;">登入帳號</th>
-          <th style="width: 20%;">密碼</th>
-          <th style="width: 20%;">備註</th>
-        </tr>
-      </thead>
-      <tbody id="pdf-tbody"></tbody>
-    </table>
-  </div>
-
-  <script>
-    // 預設資料狀態
-    const DEFAULT_CATS = ['全部', '銀行', '電郵', '購物', '工作', '影視娛樂', '社交', '其他'];
-    let state = {
-      password: '',
-      avatar: 'icon.png',
-      theme: 'light',
-      categories: [...DEFAULT_CATS],
-      items: [],
-      currentCat: '全部'
-    };
-
-    // 初始化與安全驗證
-    window.onload = function() {
-      loadData();
-      if (!state.password) {
-        document.getElementById('lock-msg').innerText = "首次使用，請設定您的解鎖密碼";
-      }
-      applyTheme(state.theme);
-      if(state.avatar) document.getElementById('user-avatar').src = state.avatar;
-    };
-
-    // 離開 App (或切換到背景) 即時鎖定
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) lockApp();
-    });
-
-    function lockApp() {
-      document.getElementById('lock-screen').style.display = 'flex';
-      document.getElementById('unlock-pass').value = '';
-    }
-
-    function unlockApp() {
-      const inputPass = document.getElementById('unlock-pass').value;
-      if (!inputPass) return alert("請輸入密碼");
-      
-      if (!state.password) {
-        // 首次設定密碼
-        state.password = inputPass;
-        saveData();
-        alert("解鎖密碼設定成功！");
-        document.getElementById('lock-screen').style.display = 'none';
-      } else if (inputPass === state.password) {
-        document.getElementById('lock-screen').style.display = 'none';
-        renderCategories();
-        renderItems();
-      } else {
-        alert("密碼錯誤！");
-      }
-    }
-
-    function verifyAuth(callback) {
-      const pass = prompt("安全驗證：請輸入主解鎖密碼");
-      if (pass === state.password) {
-        callback();
-      } else if (pass !== null) {
-        alert("密碼驗證失敗！");
-      }
-    }
-
-    // 資料持久化 (LocalStorage)
-    function saveData() {
-      localStorage.setItem('blackbox_data', JSON.stringify(state));
-    }
-
-    function loadData() {
-      const local = localStorage.getItem('blackbox_data');
-      if (local) {
-        state = Object.assign(state, JSON.parse(local));
-      }
-    }
-
-    // 介面與主題
-    function toggleTheme() {
-      state.theme = state.theme === 'light' ? 'dark' : 'light';
-      applyTheme(state.theme);
-      saveData();
-    }
-
-    function applyTheme(t) {
-      document.documentElement.setAttribute('data-theme', t);
-    }
-
-    function changeAvatar(e) {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function(evt) {
-          state.avatar = evt.target.result;
-          document.getElementById('user-avatar').src = state.avatar;
-          saveData();
-        };
-        reader.readAsDataURL(file);
-      }
-    }
-
-    // 分類管理與拖拉排序
-    function renderCategories() {
-      const bar = document.getElementById('categories-bar');
-      bar.innerHTML = '';
-      state.categories.forEach((cat, index) => {
-        const chip = document.createElement('div');
-        chip.className = `cat-chip ${state.currentCat === cat ? 'active' : ''}`;
-        chip.innerText = cat;
-        chip.onclick = () => { state.currentCat = cat; renderCategories(); renderItems(); };
-        bar.appendChild(chip);
-      });
-    }
-
-    function openCatManager() {
-      closeModal('settings-modal');
-      document.getElementById('cat-modal').style.display = 'flex';
-      renderCatManageList();
-    }
-
-    function renderCatManageList() {
-      const list = document.getElementById('cat-list-manage');
-      list.innerHTML = '';
-      state.categories.filter(c => c !== '全部' && c !== '其他').forEach((cat, idx) => {
-        const row = document.createElement('div');
-        row.style.cssText = "display:flex; justify-size:space-between; align-items:center; margin:8px 0; background:var(--bg-primary); padding:8px; border-radius:8px;";
-        row.draggable = true;
-        row.dataset.index = idx;
+    <!-- 鎖定/設定密碼頁面 -->
+    <div v-if="isLocked" class="flex-1 flex flex-col items-center justify-center p-6 safe-pt safe-pb z-50 bg-white dark:bg-black absolute inset-0">
+        <img :src="avatar || './icon.png'" class="w-24 h-24 rounded-full mb-6 object-cover border-4 border-gray-300 dark:border-gray-700">
+        <h1 class="text-2xl font-bold mb-2">{{ hasMaster ? '解鎖黑匣' : '初次設定黑匣' }}</h1>
+        <p class="text-sm text-gray-500 mb-8 text-center">{{ hasMaster ? '請輸入登入密碼' : '請設定你的主密碼 (遺失將無法復原資料)' }}</p>
         
-        row.innerHTML = `
-          <span>☰ ${cat}</span>
-          <button onclick="deleteCategory('${cat}')" class="danger" style="width:auto; padding:4px 8px; font-size:12px; margin:0;">刪除</button>
-        `;
+        <input type="password" v-model="inputPassword" placeholder="輸入密碼" class="w-full p-4 text-center rounded-xl bg-gray-100 dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4" @keyup.enter="handleLogin">
         
-        // 簡易 HTML5 拖拉排序
-        row.ondragstart = (e) => e.dataTransfer.setData('text/plain', idx);
-        row.ondragover = (e) => e.preventDefault();
-        row.ondrop = (e) => {
-          e.preventDefault();
-          const oldIdx = parseInt(e.dataTransfer.getData('text/plain'));
-          const newIdx = idx;
-          const userCats = state.categories.filter(c => c !== '全部' && c !== '其他');
-          const [moved] = userCats.splice(oldIdx, 1);
-          userCats.splice(newIdx, 0, moved);
-          state.categories = ['全部', ...userCats, '其他'];
-          saveData();
-          renderCatManageList();
-          renderCategories();
-        };
+        <button @click="handleLogin" class="w-full bg-blue-600 text-white p-4 rounded-xl font-semibold active:scale-95 transition-transform">
+            {{ hasMaster ? '解鎖' : '設定並進入' }}
+        </button>
+        <p v-if="loginError" class="text-red-500 mt-4 text-sm">{{ loginError }}</p>
+    </div>
 
-        list.appendChild(row);
-      });
-    }
-
-    function addCategory() {
-      const name = document.getElementById('new-cat-name').value.trim();
-      if (name && !state.categories.includes(name)) {
-        state.categories.splice(state.categories.length - 1, 0, name); // 插在「其他」之前
-        document.getElementById('new-cat-name').value = '';
-        saveData();
-        renderCatManageList();
-        renderCategories();
-      }
-    }
-
-    function deleteCategory(cat) {
-      if (confirm(`確定刪除「${cat}」分類嗎？刪除後該分類內的所有項目將自動轉移至「其他」分類。`)) {
-        state.items.forEach(item => {
-          if (item.category === cat) item.category = '其他';
-        });
-        state.categories = state.categories.filter(c => c !== cat);
-        saveData();
-        renderCatManageList();
-        renderCategories();
-        renderItems();
-      }
-    }
-
-    // 項目 CRUD
-    function renderItems() {
-      const container = document.getElementById('item-list');
-      const search = document.getElementById('search-input').value.toLowerCase();
-      container.innerHTML = '';
-
-      const filtered = state.items.filter(item => {
-        const matchesCat = state.currentCat === '全部' || item.category === state.currentCat;
-        const matchesSearch = item.title.toLowerCase().includes(search) || 
-                              item.username.toLowerCase().includes(search) || 
-                              item.notes.toLowerCase().includes(search);
-        return matchesCat && matchesSearch;
-      });
-
-      filtered.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-          <div class="card-header">
-            <span class="card-title">${escapeHtml(item.title)}</span>
-            <span style="font-size:12px; color:#8e8e93;">${escapeHtml(item.category)}</span>
-          </div>
-          <div class="field"><b>帳號:</b> ${escapeHtml(item.username)}</div>
-          <div class="field"><b>密碼:</b> <span id="pwd-${item.id}" class="blur">${escapeHtml(item.password)}</span></div>
-          ${item.notes ? `<div class="field"><b>備註:</b> <span id="note-${item.id}" class="blur">${escapeHtml(item.notes)}</span></div>` : ''}
-          <div class="actions">
-            <button onclick="toggleVisibility('${item.id}')" class="secondary">顯 / 隱</button>
-            <button onclick="requireAuthToEdit('${item.id}')">修改</button>
-            <button onclick="requireAuthToDelete('${item.id}')" class="danger">刪除</button>
-          </div>
-        `;
-        container.appendChild(card);
-      });
-    }
-
-    function toggleVisibility(id) {
-      const p = document.getElementById(`pwd-${id}`);
-      const n = document.getElementById(`note-${id}`);
-      if (p) p.classList.toggle('blur');
-      if (n) n.classList.toggle('blur');
-    }
-
-    function openItemModal(item = null) {
-      const catSelect = document.getElementById('item-category');
-      catSelect.innerHTML = '';
-      state.categories.filter(c => c !== '全部').forEach(c => {
-        catSelect.innerHTML += `<option value="${c}">${c}</option>`;
-      });
-
-      if (item) {
-        document.getElementById('modal-title').innerText = "修改項目";
-        document.getElementById('edit-id').value = item.id;
-        document.getElementById('item-title').value = item.title;
-        document.getElementById('item-username').value = item.username;
-        document.getElementById('item-password').value = item.password;
-        document.getElementById('item-category').value = item.category;
-        document.getElementById('item-notes').value = item.notes;
-      } else {
-        document.getElementById('modal-title').innerText = "新增密碼項目";
-        document.getElementById('edit-id').value = '';
-        document.getElementById('item-title').value = '';
-        document.getElementById('item-username').value = '';
-        document.getElementById('item-password').value = '';
-        document.getElementById('item-notes').value = '';
-      }
-      document.getElementById('item-modal').style.display = 'flex';
-    }
-
-    function saveItem() {
-      const id = document.getElementById('edit-id').value;
-      const title = document.getElementById('item-title').value.trim();
-      const username = document.getElementById('item-username').value.trim();
-      const password = document.getElementById('item-password').value.trim();
-      const category = document.getElementById('item-category').value;
-      const notes = document.getElementById('item-notes').value.trim();
-
-      if (!title) return alert("請輸入項目名稱");
-
-      if (id) {
-        // 修改
-        const item = state.items.find(i => i.id === id);
-        if (item) {
-          Object.assign(item, { title, username, password, category, notes });
-        }
-      } else {
-        // 新增
-        state.items.push({
-          id: Date.now().toString(),
-          title, username, password, category, notes
-        });
-      }
-
-      saveData();
-      closeModal('item-modal');
-      renderItems();
-    }
-
-    function requireAuthToEdit(id) {
-      verifyAuth(() => {
-        const item = state.items.find(i => i.id === id);
-        if (item) openItemModal(item);
-      });
-    }
-
-    function requireAuthToDelete(id) {
-      verifyAuth(() => {
-        if (confirm("確定刪除此項目？")) {
-          state.items = state.items.filter(i => i.id !== id);
-          saveData();
-          renderItems();
-        }
-      });
-    }
-
-    // 匯出 PDF (一頁 40-50 項)
-    function exportPDF() {
-      verifyAuth(() => {
-        const tbody = document.getElementById('pdf-tbody');
-        tbody.innerHTML = '';
+    <!-- 主介面 -->
+    <div v-else class="flex-1 flex flex-col h-full safe-pt safe-pb relative z-10">
         
-        state.items.forEach(item => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${escapeHtml(item.category)}</td>
-            <td>${escapeHtml(item.title)}</td>
-            <td>${escapeHtml(item.username)}</td>
-            <td>${escapeHtml(item.password)}</td>
-            <td>${escapeHtml(item.notes)}</td>
-          `;
-          tbody.appendChild(tr);
-        });
+        <!-- 頂部導航 -->
+        <header class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-zinc-800">
+            <div class="flex items-center gap-3">
+                <label class="cursor-pointer">
+                    <img :src="avatar || './icon.png'" class="w-10 h-10 rounded-full object-cover">
+                    <input type="file" class="hidden" accept="image/*" @change="handleAvatarUpload">
+                </label>
+                <h1 class="text-xl font-bold">黑匣</h1>
+            </div>
+            <div class="flex gap-4">
+                <button @click="toggleTheme" class="text-xl">🌓</button>
+                <button @click="openSettings = true" class="text-xl">⚙️</button>
+                <button @click="lockApp" class="text-xl text-red-500">🔒</button>
+            </div>
+        </header>
 
-        const element = document.getElementById('pdf-template');
-        element.style.display = 'block';
+        <!-- 搜尋與過濾 -->
+        <div class="p-4">
+            <input type="text" v-model="searchQuery" placeholder="搜尋名稱、帳號、備註..." class="w-full p-3 rounded-lg bg-gray-100 dark:bg-zinc-800 focus:outline-none">
+            
+            <!-- 分類橫向滾動 -->
+            <div class="flex overflow-x-auto mt-4 gap-2 pb-2">
+                <button @click="selectedCategory = ''" :class="!selectedCategory ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-zinc-700'" class="px-4 py-1 rounded-full text-sm whitespace-nowrap">全部</button>
+                <button v-for="cat in categories" :key="cat" @click="selectedCategory = cat" :class="selectedCategory === cat ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-zinc-700'" class="px-4 py-1 rounded-full text-sm whitespace-nowrap">{{ cat }}</button>
+            </div>
+        </div>
 
-        const opt = {
-          margin:       0.3,
-          filename:     `黑匣_密碼備份_${new Date().toISOString().slice(0,10)}.pdf`,
-          image:        { type: 'jpeg', quality: 0.98 },
-          html2canvas:  { scale: 2 },
-          jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
-        };
+        <!-- 項目列表 -->
+        <main class="flex-1 overflow-y-auto p-4 space-y-3">
+            <div v-for="item in filteredVault" :key="item.id" class="bg-gray-50 dark:bg-zinc-900 p-4 rounded-xl border border-gray-200 dark:border-zinc-800 relative">
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <span class="text-xs text-blue-500 font-bold">{{ item.category }}</span>
+                        <h3 class="font-bold text-lg">{{ item.name }}</h3>
+                    </div>
+                    <button @click="authThenEdit(item)" class="text-sm text-gray-500 bg-gray-200 dark:bg-zinc-700 px-3 py-1 rounded">修改</button>
+                </div>
+                
+                <div class="text-sm space-y-2 mt-3 text-gray-600 dark:text-gray-300">
+                    <p><span class="font-semibold">帳號:</span> {{ item.username }}</p>
+                    <div class="flex items-center gap-2">
+                        <span class="font-semibold">密碼:</span>
+                        <span class="font-mono bg-gray-200 dark:bg-black px-2 py-0.5 rounded">{{ item.show ? item.password : '••••••••' }}</span>
+                        <button @click="item.show = !item.show" class="ml-auto text-xs">{{ item.show ? '隱藏' : '顯示' }}</button>
+                    </div>
+                    <div class="flex items-start gap-2 pt-1 border-t border-gray-200 dark:border-zinc-700 mt-2">
+                        <span class="font-semibold whitespace-nowrap">備註:</span>
+                        <span class="whitespace-pre-wrap">{{ item.show ? item.note : '••••••••' }}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div v-if="filteredVault.length === 0" class="text-center text-gray-500 mt-10">找不到項目</div>
+        </main>
 
-        html2pdf().set(opt).from(element).save().then(() => {
-          element.style.display = 'none';
-        });
-      });
-    }
+        <!-- 浮動新增按鈕 -->
+        <button @click="openAddModal" class="absolute bottom-10 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg text-3xl flex items-center justify-center active:scale-95">+</button>
+    </div>
 
-    // 匯出/匯入 JSON 備份
-    function exportJSON() {
-      verifyAuth(() => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
-        const a = document.createElement('a');
-        a.href = dataStr;
-        a.download = `blackbox_backup_${new Date().toISOString().slice(0,10)}.json`;
-        a.click();
-      });
-    }
+    <!-- 新增/修改 Modal -->
+    <div v-if="showItemModal" class="absolute inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
+        <div class="bg-white dark:bg-zinc-900 w-full rounded-t-2xl p-6 safe-pb max-h-[90vh] overflow-y-auto">
+            <h2 class="text-xl font-bold mb-4">{{ editingItem ? '修改項目' : '新增項目' }}</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm text-gray-500">分類</label>
+                    <select v-model="formData.category" class="w-full p-3 rounded-lg bg-gray-100 dark:bg-zinc-800">
+                        <option v-for="cat in categories" :value="cat">{{ cat }}</option>
+                    </select>
+                </div>
+                <div><label class="text-sm text-gray-500">項目名稱</label><input type="text" v-model="formData.name" class="w-full p-3 rounded-lg bg-gray-100 dark:bg-zinc-800"></div>
+                <div><label class="text-sm text-gray-500">登入名稱</label><input type="text" v-model="formData.username" class="w-full p-3 rounded-lg bg-gray-100 dark:bg-zinc-800"></div>
+                <div><label class="text-sm text-gray-500">密碼</label><input type="text" v-model="formData.password" class="w-full p-3 rounded-lg bg-gray-100 dark:bg-zinc-800"></div>
+                <div><label class="text-sm text-gray-500">備註 (不限字數)</label><textarea v-model="formData.note" rows="4" class="w-full p-3 rounded-lg bg-gray-100 dark:bg-zinc-800"></textarea></div>
+            </div>
+            <div class="flex gap-4 mt-6">
+                <button @click="showItemModal = false" class="flex-1 p-3 rounded-xl bg-gray-200 dark:bg-zinc-700">取消</button>
+                <button @click="saveItem" class="flex-1 p-3 rounded-xl bg-blue-600 text-white">儲存</button>
+            </div>
+            <button v-if="editingItem" @click="deleteItem" class="w-full mt-4 p-3 rounded-xl bg-red-500 text-white">刪除此項目</button>
+        </div>
+    </div>
 
-    function importJSON(e) {
-      const file = e.target.files[0];
-      if (!file) return;
+    <!-- 驗證密碼 Modal (修改前) -->
+    <div v-if="showAuthModal" class="absolute inset-0 bg-black bg-opacity-70 z-[60] flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-zinc-900 rounded-2xl p-6 w-full max-w-sm text-center">
+            <h3 class="text-lg font-bold mb-4">安全驗證</h3>
+            <p class="text-sm mb-4">修改前請輸入登入密碼</p>
+            <input type="password" v-model="authPassword" class="w-full p-3 rounded-lg bg-gray-100 dark:bg-zinc-800 mb-4 text-center" @keyup.enter="confirmAuth">
+            <p v-if="authError" class="text-red-500 text-sm mb-4">{{ authError }}</p>
+            <div class="flex gap-3">
+                <button @click="showAuthModal = false; authPassword=''" class="flex-1 p-3 rounded-xl bg-gray-200 dark:bg-zinc-700">取消</button>
+                <button @click="confirmAuth" class="flex-1 p-3 rounded-xl bg-blue-600 text-white">確認</button>
+            </div>
+        </div>
+    </div>
 
-      const reader = new FileReader();
-      reader.onload = function(evt) {
-        try {
-          const imported = JSON.parse(evt.target.result);
-          if (imported && imported.items) {
-            if (confirm("匯入備份將會覆蓋當前所有資料，是否繼續？")) {
-              state = imported;
-              saveData();
-              location.reload();
+    <!-- 設定 & 工具頁面 -->
+    <div v-if="openSettings" class="absolute inset-0 bg-gray-100 dark:bg-zinc-900 z-40 flex flex-col safe-pt safe-pb">
+        <header class="flex justify-between items-center p-4 border-b dark:border-zinc-800">
+            <h2 class="text-xl font-bold">設定與工具</h2>
+            <button @click="openSettings = false" class="text-blue-500 text-lg">完成</button>
+        </header>
+        <div class="p-4 overflow-y-auto flex-1 space-y-6">
+            
+            <!-- 分類管理 -->
+            <section class="bg-white dark:bg-black rounded-xl p-4 shadow-sm">
+                <h3 class="font-bold mb-3 text-lg">分類管理 (拖拉排序)</h3>
+                <ul id="categoryList" class="space-y-2 mb-3">
+                    <li v-for="(cat, index) in categories" :key="cat" class="flex justify-between items-center bg-gray-100 dark:bg-zinc-800 p-2 rounded cursor-grab active:cursor-grabbing">
+                        <span class="drag-handle font-bold text-gray-400 mr-2">≡</span>
+                        <span class="flex-1">{{ cat }}</span>
+                        <button v-if="cat !== '其他'" @click="deleteCategory(cat)" class="text-red-500 text-sm px-2">刪除</button>
+                    </li>
+                </ul>
+                <div class="flex gap-2">
+                    <input type="text" v-model="newCategoryName" placeholder="新增分類" class="flex-1 p-2 rounded bg-gray-100 dark:bg-zinc-800">
+                    <button @click="addCategory" class="bg-blue-600 text-white px-4 rounded">新增</button>
+                </div>
+            </section>
+
+            <!-- 匯出/匯入/PDF -->
+            <section class="bg-white dark:bg-black rounded-xl p-4 shadow-sm space-y-3">
+                <h3 class="font-bold mb-3 text-lg">資料備份與匯出</h3>
+                
+                <button @click="exportData" class="w-full p-3 bg-gray-200 dark:bg-zinc-800 rounded-lg flex justify-between items-center">
+                    <span>📤 匯出備份 (包含加密資料)</span>
+                </button>
+                
+                <label class="w-full p-3 bg-gray-200 dark:bg-zinc-800 rounded-lg flex justify-between items-center cursor-pointer">
+                    <span>📥 匯入備份 (換機還原)</span>
+                    <input type="file" accept=".json" @change="importData" class="hidden">
+                </label>
+
+                <button @click="exportToPDF" class="w-full p-3 bg-blue-600 text-white rounded-lg flex justify-between items-center">
+                    <span>📄 匯出為 PDF (預覽並列印儲存)</span>
+                </button>
+            </section>
+        </div>
+    </div>
+</div>
+
+<script>
+const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
+
+createApp({
+    setup() {
+        // --- 狀態定義 ---
+        const isLocked = ref(true);
+        const hasMaster = ref(!!localStorage.getItem('blackbox_hash'));
+        const inputPassword = ref('');
+        const loginError = ref('');
+        const currentPassword = ref(''); // 暫存解鎖密碼用於加解密
+
+        const vault = ref([]); // 原始加密資料庫
+        const decryptedVault = ref([]); // 解密後在記憶體操作的資料
+        
+        const defaultCategories = ['銀行', '電郵', '購物', '工作', '影視娛樂', '社交', '其他'];
+        const categories = ref(JSON.parse(localStorage.getItem('blackbox_categories')) || defaultCategories);
+        
+        const theme = ref(localStorage.getItem('theme') || 'dark');
+        const avatar = ref(localStorage.getItem('blackbox_avatar') || '');
+
+        // UI 狀態
+        const searchQuery = ref('');
+        const selectedCategory = ref('');
+        const openSettings = ref(false);
+        const showItemModal = ref(false);
+        const editingItem = ref(null);
+        
+        // Auth 修改驗證
+        const showAuthModal = ref(false);
+        const authPassword = ref('');
+        const authError = ref('');
+        let pendingEditItem = null;
+
+        const formData = ref({ id: '', category: '其他', name: '', username: '', password: '', note: '' });
+        const newCategoryName = ref('');
+
+        // --- 生命週期與事件綁定 ---
+        onMounted(() => {
+            applyTheme();
+            // 監聽離開 App (或切換多工)，立即鎖定
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) lockApp();
+            });
+            
+            // 註冊 Service Worker (PWA)
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw.js');
             }
-          } else {
-            alert("無效的備份檔案格式");
-          }
-        } catch(err) {
-          alert("讀取檔案失敗：" + err);
-        }
-      };
-      reader.readAsText(file);
-    }
+        });
 
-    function changeAppPassword() {
-      verifyAuth(() => {
-        const newPass = prompt("請輸入新的解鎖密碼");
-        if (newPass) {
-          state.password = newPass;
-          saveData();
-          alert("密碼已更新！");
-        }
-      });
-    }
+        // 監控設定頁打開以初始化 SortableJS
+        watch(openSettings, async (newVal) => {
+            if (newVal) {
+                await nextTick();
+                const el = document.getElementById('categoryList');
+                if (el) {
+                    new Sortable(el, {
+                        handle: '.drag-handle',
+                        animation: 150,
+                        onEnd: (evt) => {
+                            const itemEl = categories.value.splice(evt.oldIndex, 1)[0];
+                            categories.value.splice(evt.newIndex, 0, itemEl);
+                            saveCategories();
+                        }
+                    });
+                }
+            }
+        });
 
-    // 輔助函式
-    function openSettings() { document.getElementById('settings-modal').style.display = 'flex'; }
-    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-    function escapeHtml(str) {
-      return (str || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        // --- 核心邏輯 (解鎖/加密) ---
+        const hashStr = (str) => CryptoJS.SHA256(str).toString();
+
+        const handleLogin = () => {
+            if (!inputPassword.value) return;
+            loginError.value = '';
+
+            if (!hasMaster.value) {
+                // 初次設定
+                const hash = hashStr(inputPassword.value);
+                localStorage.setItem('blackbox_hash', hash);
+                currentPassword.value = inputPassword.value;
+                hasMaster.value = true;
+                isLocked.value = false;
+                saveVault(); // 初始化空庫
+            } else {
+                // 解鎖
+                if (hashStr(inputPassword.value) === localStorage.getItem('blackbox_hash')) {
+                    currentPassword.value = inputPassword.value;
+                    isLocked.value = false;
+                    loadVault();
+                } else {
+                    loginError.value = '密碼錯誤';
+                }
+            }
+            inputPassword.value = '';
+        };
+
+        const lockApp = () => {
+            isLocked.value = true;
+            currentPassword.value = '';
+            decryptedVault.value = []; // 清除記憶體中的明文
+            openSettings.value = false;
+            showItemModal.value = false;
+            showAuthModal.value = false;
+        };
+
+        const loadVault = () => {
+            const encryptedStr = localStorage.getItem('blackbox_vault');
+            if (encryptedStr) {
+                try {
+                    const bytes = CryptoJS.AES.decrypt(encryptedStr, currentPassword.value);
+                    decryptedVault.value = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+                    // 附加 UI 狀態
+                    decryptedVault.value.forEach(item => item.show = false);
+                } catch (e) {
+                    alert('資料解密失敗，可能資料已損毀。');
+                    decryptedVault.value = [];
+                }
+            }
+        };
+
+        const saveVault = () => {
+            const dataToSave = decryptedVault.value.map(item => {
+                const { show, ...rest } = item;
+                return rest;
+            });
+            const encryptedStr = CryptoJS.AES.encrypt(JSON.stringify(dataToSave), currentPassword.value).toString();
+            localStorage.setItem('blackbox_vault', encryptedStr);
+        };
+
+        // --- 項目管理 ---
+        const filteredVault = computed(() => {
+            let result = decryptedVault.value;
+            if (selectedCategory.value) {
+                result = result.filter(i => i.category === selectedCategory.value);
+            }
+            if (searchQuery.value) {
+                const q = searchQuery.value.toLowerCase();
+                result = result.filter(i => 
+                    i.name.toLowerCase().includes(q) || 
+                    i.username.toLowerCase().includes(q) || 
+                    i.note.toLowerCase().includes(q) ||
+                    i.password.toLowerCase().includes(q)
+                );
+            }
+            return result;
+        });
+
+        const openAddModal = () => {
+            editingItem.value = null;
+            formData.value = { id: Date.now().toString(), category: categories.value[0] || '其他', name: '', username: '', password: '', note: '' };
+            showItemModal.value = true;
+        };
+
+        const authThenEdit = (item) => {
+            pendingEditItem = item;
+            showAuthModal.value = true;
+            authError.value = '';
+        };
+
+        const confirmAuth = () => {
+            if (hashStr(authPassword.value) === localStorage.getItem('blackbox_hash')) {
+                showAuthModal.value = false;
+                authPassword.value = '';
+                openEditModal(pendingEditItem);
+            } else {
+                authError.value = '密碼錯誤';
+            }
+        };
+
+        const openEditModal = (item) => {
+            editingItem.value = item;
+            formData.value = { ...item };
+            showItemModal.value = true;
+        };
+
+        const saveItem = () => {
+            if (!formData.value.name) return alert('請填寫項目名稱');
+            if (editingItem.value) {
+                const index = decryptedVault.value.findIndex(i => i.id === editingItem.value.id);
+                if (index !== -1) decryptedVault.value[index] = { ...formData.value, show: false };
+            } else {
+                decryptedVault.value.push({ ...formData.value, show: false });
+            }
+            saveVault();
+            showItemModal.value = false;
+        };
+
+        const deleteItem = () => {
+            if(confirm('確定要刪除此項目嗎？')) {
+                decryptedVault.value = decryptedVault.value.filter(i => i.id !== editingItem.value.id);
+                saveVault();
+                showItemModal.value = false;
+            }
+        };
+
+        // --- 分類管理 ---
+        const saveCategories = () => localStorage.setItem('blackbox_categories', JSON.stringify(categories.value));
+
+        const addCategory = () => {
+            const name = newCategoryName.value.trim();
+            if (name && !categories.value.includes(name)) {
+                categories.value.push(name);
+                saveCategories();
+                newCategoryName.value = '';
+            }
+        };
+
+        const deleteCategory = (cat) => {
+            if (cat === '其他') return;
+            if (confirm(`刪除「${cat}」分類？\n該分類下的所有項目將會被移動到「其他」。`)) {
+                categories.value = categories.value.filter(c => c !== cat);
+                if (!categories.value.includes('其他')) categories.value.push('其他');
+                saveCategories();
+                
+                // 遷移項目
+                decryptedVault.value.forEach(item => {
+                    if (item.category === cat) item.category = '其他';
+                });
+                saveVault();
+            }
+        };
+
+        // --- 工具功能 ---
+        const toggleTheme = () => {
+            theme.value = theme.value === 'dark' ? 'light' : 'dark';
+            applyTheme();
+            localStorage.setItem('theme', theme.value);
+        };
+
+        const applyTheme = () => {
+            if (theme.value === 'dark') document.documentElement.classList.add('dark');
+            else document.documentElement.classList.remove('dark');
+        };
+
+        const handleAvatarUpload = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    avatar.value = evt.target.result;
+                    localStorage.setItem('blackbox_avatar', avatar.value);
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        const exportData = () => {
+            const exportObj = {
+                hash: localStorage.getItem('blackbox_hash'),
+                categories: categories.value,
+                vault: localStorage.getItem('blackbox_vault'), // 匯出加密的字串
+                timestamp: Date.now()
+            };
+            const blob = new Blob([JSON.stringify(exportObj)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `黑匣備份_${new Date().toLocaleDateString()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        const importData = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const data = JSON.parse(evt.target.result);
+                    if (data.hash && data.vault) {
+                        if (confirm('警告：匯入將覆蓋現有所有資料與密碼，是否繼續？')) {
+                            localStorage.setItem('blackbox_hash', data.hash);
+                            localStorage.setItem('blackbox_vault', data.vault);
+                            if(data.categories) {
+                                categories.value = data.categories;
+                                saveCategories();
+                            }
+                            alert('匯入成功，請使用匯入檔案的密碼重新登入。');
+                            window.location.reload();
+                        }
+                    } else {
+                        alert('無效的備份檔案格式');
+                    }
+                } catch (err) {
+                    alert('讀取檔案失敗');
+                }
+            };
+            reader.readAsText(file);
+        };
+
+        const exportToPDF = () => {
+            // 利用瀏覽器原生的列印功能匯出 PDF。
+            // iOS Safari 彈出列印對話框時，兩指放大預覽即可直接儲存為完美排版的 PDF，支援中文。
+            alert("請在接下來的彈出視窗中，透過 iOS 的「列印」或「分享 -> 儲存至檔案」功能來生成 PDF。");
+            // 強制展開所有明文用於列印
+            document.getElementById('print-area').classList.remove('hidden');
+            window.print();
+            document.getElementById('print-area').classList.add('hidden');
+        };
+
+        return {
+            isLocked, hasMaster, inputPassword, loginError, handleLogin, lockApp,
+            vault, decryptedVault, filteredVault, searchQuery, selectedCategory,
+            categories, theme, toggleTheme, avatar, handleAvatarUpload,
+            openSettings, showItemModal, formData, editingItem, openAddModal, authThenEdit, saveItem, deleteItem,
+            newCategoryName, addCategory, deleteCategory,
+            showAuthModal, authPassword, authError, confirmAuth,
+            exportData, importData, exportToPDF
+        };
     }
-  </script>
+}).mount('#app');
+</script>
 </body>
 </html>
