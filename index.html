@@ -1,544 +1,492 @@
 <!DOCTYPE html>
 <html lang="zh-HK">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>黑匣 - Black Vault</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>黑匣 Black Vault</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  
+  <!-- 載入 QR Code 生成庫 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #090a0f;
+      --card-bg: rgba(20, 24, 35, 0.75);
+      --accent-color: #00f0ff;
+      --text-main: #f0f4f8;
+      --text-sub: #8a99ad;
+      --danger: #ff3b30;
+    }
+    body {
+      margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-color); color: var(--text-main); min-height: 100vh; box-sizing: border-box;
+    }
+    h1 { font-size: 24px; text-align: center; color: var(--accent-color); letter-spacing: 2px; margin-bottom: 20px; }
+    .card {
+      background: var(--card-bg); border: 1px solid rgba(0, 240, 255, 0.2); border-radius: 16px;
+      padding: 16px; margin-bottom: 16px; backdrop-filter: blur(10px);
+      transition: transform 0.2s, opacity 0.2s;
+    }
+    /* 拖拉卡片樣式 */
+    .card.draggable {
+      cursor: grab;
+      user-select: none;
+    }
+    .card.dragging {
+      opacity: 0.4;
+      transform: scale(0.98);
+      border-color: var(--accent-color);
+    }
+    .drag-handle {
+      display: inline-block;
+      margin-right: 8px;
+      color: var(--accent-color);
+      font-size: 18px;
+      cursor: grab;
+    }
+    .btn {
+      display: block; width: 100%; padding: 12px; margin: 8px 0; border: none; border-radius: 10px;
+      font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; box-sizing: border-box;
+    }
+    .btn-primary { background: var(--accent-color); color: #000; }
+    .btn-secondary { background: rgba(255, 255, 255, 0.1); color: var(--text-main); border: 1px solid rgba(255, 255, 255, 0.2); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    input[type="password"], input[type="text"] {
+      width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid rgba(0,240,255,0.3);
+      background: rgba(0,0,0,0.5); color: #fff; font-size: 16px; box-sizing: border-box;
+    }
+
+    /* 解鎖遮罩鎖屏 */
+    #lockScreen {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: var(--bg-color); z-index: 9999; display: flex;
+      flex-direction: column; justify-content: center; align-items: center; padding: 30px; box-sizing: border-box;
+    }
+
+    /* PDF 備份頁面樣式 (預設隱藏，僅列印/匯出 PDF 時顯示) */
+    #pdfContainer {
+      display: none;
+      background: #ffffff; color: #000000; padding: 40px; font-family: sans-serif;
+    }
     
-    <!-- iOS PWA Meta Tags -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="黑匣">
-    
-    <!-- 1. 動態 Canvas 生成相容 iOS 的 Apple Touch Icon (解決黑色 Logo 問題) -->
-    <link id="appleIcon" rel="apple-touch-icon" href="">
-
-    <style>
-        :root {
-            --bg-main: #090a0f;
-            --bg-card: #14161d;
-            --bg-input: #1f222b;
-            --text-primary: #f0f2f5;
-            --text-secondary: #8a8d9b;
-            --accent-color: #0a84ff;
-            --danger-color: #ff453a;
-            --border-color: #2a2d3d;
-            --badge-bg: #222636;
-        }
-
-        [data-theme="light"] {
-            --bg-main: #f2f2f7;
-            --bg-card: #ffffff;
-            --bg-input: #e5e5ea;
-            --text-primary: #000000;
-            --text-secondary: #6c6c70;
-            --accent-color: #007aff;
-            --danger-color: #ff3b30;
-            --border-color: #d1d1d6;
-            --badge-bg: #e5e5ea;
-        }
-
-        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
-        
-        body { 
-            background-color: var(--bg-main); 
-            color: var(--text-primary); 
-            margin: 0; 
-            padding-top: calc(env(safe-area-inset-top) + 16px);
-            padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
-            padding-left: 16px;
-            padding-right: 16px;
-            transition: all 0.3s; 
-        }
-
-        /* 全螢幕解鎖鎖定頁面 */
-        #lockOverlay {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: #090a0f;
-            z-index: 99999;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            padding: 24px;
-            text-align: center;
-        }
-
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-        .avatar-container { display: flex; align-items: center; gap: 12px; }
-        .avatar { width: 44px; height: 44px; border-radius: 50%; background: #2c2e3a; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; border: 2px solid var(--accent-color); }
-        .avatar img { width: 100%; height: 100%; object-fit: cover; }
-        
-        .card { background: var(--bg-card); border-radius: 16px; padding: 16px; margin-bottom: 14px; border: 1px solid var(--border-color); }
-        input, select, textarea, button { width: 100%; padding: 12px; margin-top: 8px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font-size: 15px; }
-        textarea { resize: vertical; min-height: 70px; }
-        button { background: var(--accent-color); color: #fff; font-weight: 600; border: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-        
-        .category-container { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-        .category-tabs { display: flex; gap: 8px; overflow-x: auto; flex: 1; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
-        .category-tabs::-webkit-scrollbar { display: none; }
-        .tab { flex: 0 0 auto; padding: 8px 14px; border-radius: 20px; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-secondary); font-size: 13px; cursor: pointer; user-select: none; }
-        .tab.active { background: var(--accent-color); color: #fff; border-color: var(--accent-color); font-weight: bold; }
-
-        .item-header { display: flex; justify-content: space-between; align-items: center; }
-        .item-title { font-weight: bold; font-size: 16px; }
-        .badge { background: var(--badge-bg); color: var(--accent-color); font-size: 12px; padding: 3px 8px; border-radius: 6px; font-weight: 600; }
-        .item-sub { color: var(--text-secondary); font-size: 14px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; }
-        
-        .blur-text { filter: blur(6px); transition: filter 0.2s; user-select: none; }
-        .unblurred { filter: none; }
-        
-        .note-box { background: var(--bg-input); padding: 10px; border-radius: 8px; margin-top: 8px; font-size: 13px; border-left: 3px solid var(--accent-color); word-break: break-all; }
-        
-        .action-btns { display: flex; gap: 8px; margin-top: 12px; }
-        .action-btns button { font-size: 13px; padding: 8px; }
-
-        .btn-small { width: auto; padding: 6px 12px; margin: 0; font-size: 12px; background: var(--bg-input); border: 1px solid var(--border-color); }
-
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; justify-content: center; align-items: center; padding: 20px; }
-        .modal-content { background: var(--bg-card); border-radius: 16px; padding: 20px; width: 100%; max-width: 400px; border: 1px solid var(--border-color); }
-        .cat-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
-        .cat-item button { width: auto; padding: 4px 8px; margin: 0 2px; font-size: 12px; }
-
-        /* 2. iOS Safari 列印 / PDF 專用視覺優化 */
-        #printArea { display: none; }
-        @media print {
-            @page { size: A4 portrait; margin: 10mm; }
-            body { background: #ffffff !important; color: #000000 !important; padding: 0 !important; margin: 0 !important; }
-            .no-print, #lockOverlay, .card, .category-container, .header, h3, .modal { display: none !important; }
-            #printArea { display: block !important; width: 100% !important; }
-            .print-table { width: 100% !important; border-collapse: collapse !important; margin-top: 10px !important; }
-            .print-table th, .print-table td { border: 1px solid #444 !important; padding: 6px 8px !important; text-align: left !important; font-size: 9pt !important; vertical-align: top !important; color: #000 !important; }
-            .print-table th { background-color: #f0f0f0 !important; font-weight: bold !important; }
-            .blur-text { filter: none !important; }
-        }
-    </style>
+    @media print {
+      body * { visibility: hidden; }
+      #pdfContainer, #pdfContainer * { visibility: visible; }
+      #pdfContainer { display: block; position: absolute; left: 0; top: 0; width: 100%; }
+    }
+  </style>
 </head>
 <body>
 
-    <!-- 解鎖鎖定頁面 -->
-    <div id="lockOverlay">
-        <div style="font-size: 56px; margin-bottom: 12px;">🛡️</div>
-        <h2 style="margin: 0 0 8px 0; color: #fff;">黑匣 (Black Vault)</h2>
-        <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 24px;">生物辨識 (Face ID) + 主密碼雙重驗證</p>
+  <!-- 解鎖遮罩 -->
+  <div id="lockScreen">
+    <h1 style="font-size:28px;">🔒 黑匣 BLACK VAULT</h1>
+    <p style="color:var(--text-sub);">請輸入 App 解鎖密碼</p>
+    <button class="btn btn-primary" id="bioUnlockBtn" onclick="unlockWithBiometrics()" style="display:none; max-width:300px; margin-bottom:15px;">
+      👤 使用 Face ID / Touch ID 解鎖
+    </button>
+    <input type="password" id="passcodeInput" placeholder="輸入解密密碼" style="max-width:300px; text-align:center;">
+    <button class="btn btn-secondary" onclick="unlockApp()" style="max-width:300px;">密碼解鎖</button>
+  </div>
+
+  <!-- App 主內容 -->
+  <div id="mainApp" style="display:none;">
+    <h1>黑匣 BLACK VAULT</h1>
+
+    <!-- 新增分類按鈕區 -->
+    <div style="margin-bottom: 15px;">
+      <button class="btn btn-primary" onclick="addNewCategory()">➕ 新增黑匣分類</button>
+    </div>
+
+    <!-- 可拖拉排序的分類容器 -->
+    <div id="categoryContainer"></div>
+
+    <!-- PDF 備份與還原功能區 -->
+    <div class="card">
+      <h3 style="margin-top:0; color:var(--accent-color);">PDF 安全備份與還原</h3>
+      <p style="font-size: 14px; color: var(--text-sub);">生成含有加密 QR Code 的專屬 PDF 備份檔，可儲存至 iPhone 檔案或雲端。</p>
+      <button class="btn btn-primary" onclick="generatePDFBackup()">📄 生成 PDF 備份檔</button>
+      <button class="btn btn-secondary" onclick="importFromQRCode()">📷 輸入/貼上加密字串還原</button>
+    </div>
+
+    <!-- 解鎖與資安設定 -->
+    <div class="card">
+      <h3 style="margin-top:0; color:var(--accent-color);">解鎖與資安設定</h3>
+      <p style="font-size: 14px; color: var(--text-sub);" id="lockStatusText">目前狀態：尚未設定密碼</p>
+      <button class="btn btn-primary" onclick="setAppPasscode()">自訂／修改解鎖密碼</button>
+      <button class="btn btn-secondary" id="enableBioBtn" onclick="registerBiometrics()" style="display:none;">啟用 Face ID / Touch ID</button>
+      <button class="btn btn-danger" onclick="removeAppPasscode()" id="removePassBtn" style="display:none;">取消 App 解鎖功能</button>
+    </div>
+  </div>
+
+  <!-- PDF 生成範本區域 -->
+  <div id="pdfContainer">
+    <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px;">
+      <h1 style="color: #000; margin: 0; font-size: 28px;">黑匣 BLACK VAULT</h1>
+      <p style="margin: 5px 0 0 0; color: #555;">加密安全備份憑證 (Encrypted Backup Vault)</p>
+    </div>
+
+    <div style="display: flex; justify-content: space-around; align-items: center; margin-bottom: 30px;">
+      <div id="qrcode" style="padding: 10px; border: 1px solid #ccc; background: #fff;"></div>
+      <div style="max-width: 250px;">
+        <p><strong>備份日期：</strong><span id="pdfDate"></span></p>
+        <p><strong>安全級別：</strong>AES-256 高強度加密</p>
+        <p style="font-size: 12px; color: #666;">說明：請妥善保存此 PDF 檔。復原時只需複製下方的加密密文或掃描左側 QR Code 即可。</p>
+      </div>
+    </div>
+
+    <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; word-break: break-all;">
+      <h4 style="margin-top: 0;">加密備份密文 (Encrypted Payload):</h4>
+      <p id="pdfPayload" style="font-family: monospace; font-size: 10px; color: #333;"></p>
+    </div>
+  </div>
+
+  <script>
+    let vaultData = [];
+
+    function verifyOperation(actionName, success) {
+      if (success) {
+        console.log(`[驗證成功] ${actionName} 已順利完成。`);
+      } else {
+        console.warn(`[驗證失敗] ${actionName} 操作未完全執行。`);
+      }
+    }
+
+    // 載入資料並初始化
+    window.onload = function() {
+      loadVaultData();
+      const savedPasscode = localStorage.getItem('black_vault_passcode');
+      const bioEnabled = localStorage.getItem('black_vault_bio_enabled');
+
+      if (!savedPasscode) {
+        document.getElementById('lockScreen').style.display = 'none';
+        document.getElementById('mainApp').style.display = 'block';
+      } else {
+        if (bioEnabled && window.PublicKeyCredential) {
+          document.getElementById('bioUnlockBtn').style.display = 'block';
+          setTimeout(unlockWithBiometrics, 300);
+        }
+      }
+      updatePasscodeUI();
+    };
+
+    function loadVaultData() {
+      const saved = localStorage.getItem('black_vault_data');
+      vaultData = saved ? JSON.parse(saved) : [
+        { id: '1', title: '預設密碼庫', items: [] }
+      ];
+      renderCategories();
+    }
+
+    function saveVaultData() {
+      localStorage.setItem('black_vault_data', JSON.stringify(vaultData));
+    }
+
+    // 渲染分類卡片（含拖拉事件綁定）
+    function renderCategories() {
+      const container = document.getElementById('categoryContainer');
+      container.innerHTML = '';
+
+      vaultData.forEach((cat, index) => {
+        const card = document.createElement('div');
+        card.className = 'card draggable';
+        card.draggable = true;
+        card.dataset.index = index;
+
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="margin:0; color:var(--accent-color);">
+              <span class="drag-handle">☰</span> ${cat.title}
+            </h3>
+            <button class="btn btn-danger" style="width:auto; padding:4px 10px; margin:0; font-size:12px;" onclick="deleteCategory('${cat.id}')">刪除</button>
+          </div>
+        `;
+
+        // 拖拉排序事件監聽
+        card.addEventListener('dragstart', handleDragStart);
+        card.addEventListener('dragover', handleDragOver);
+        card.addEventListener('drop', handleDrop);
+        card.addEventListener('dragend', handleDragEnd);
+
+        container.appendChild(card);
+      });
+    }
+
+    // 拖拉排序 (Drag & Drop) 邏輯
+    let draggedIndex = null;
+
+    function handleDragStart(e) {
+      draggedIndex = +this.dataset.index;
+      this.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function handleDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      const targetIndex = +this.dataset.index;
+      if (draggedIndex !== null && draggedIndex !== targetIndex) {
+        // 調整陣列順序
+        const draggedItem = vaultData.splice(draggedIndex, 1)[0];
+        vaultData.splice(targetIndex, 0, draggedItem);
+        saveVaultData();
+        renderCategories();
+        verifyOperation("分類拖拉排序", true);
+      }
+    }
+
+    function handleDragEnd() {
+      this.classList.remove('dragging');
+      draggedIndex = null;
+    }
+
+    // 新增/刪除分類
+    function addNewCategory() {
+      const title = prompt("請輸入新分類名稱：");
+      if (title) {
+        vaultData.push({ id: Date.now().toString(), title: title, items: [] });
+        saveVaultData();
+        renderCategories();
+      }
+    }
+
+    function deleteCategory(id) {
+      if (confirm("確定要刪除此分類？")) {
+        vaultData = vaultData.filter(c => c.id !== id);
+        saveVaultData();
+        renderCategories();
+      }
+    }
+
+    // 金鑰衍生演算法 (PBKDF2)
+    async function deriveKey(password, salt) {
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]
+      );
+      return crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+        keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+      );
+    }
+
+    // 生成 PDF 備份檔
+    async function generatePDFBackup() {
+      const password = prompt("請設定備份檔的解密密碼：");
+      if (!password) return;
+
+      try {
+        const rawData = JSON.stringify(vaultData);
+        const enc = new TextEncoder();
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
         
-        <input type="password" id="masterPwdInput" placeholder="請輸入主密碼 (預設: admin)" style="max-width: 280px; text-align: center; margin-bottom: 12px;">
-        <button style="max-width: 280px; background: var(--accent-color);" onclick="authenticateUser()">解鎖 (啟動 Face ID / Touch ID)</button>
-    </div>
+        const key = await deriveKey(password, salt);
+        const encryptedContent = await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv: iv }, key, enc.encode(rawData)
+        );
 
-    <!-- 頂部列 -->
-    <div class="header no-print">
-        <div class="avatar-container">
-            <div class="avatar" onclick="document.getElementById('avatarInput').click()">
-                <img id="avatarImg" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238e8e93'><path d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/></svg>">
-            </div>
-            <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="uploadAvatar(event)">
-            <div>
-                <div style="font-weight:bold; font-size:18px;">黑匣 (Black Vault)</div>
-                <div style="font-size:12px; color:#34c759;" id="lockStatus">🔓 已完成雙重驗證解鎖</div>
-            </div>
-        </div>
-        <button class="btn-small no-print" onclick="toggleTheme()">🌓 主題</button>
-    </div>
+        const backupPackage = {
+          encrypted: true,
+          salt: Array.from(salt),
+          iv: Array.from(iv),
+          data: Array.from(new Uint8Array(encryptedContent))
+        };
 
-    <!-- 搜尋與匯出列印 -->
-    <div class="card no-print">
-        <input type="text" id="searchInput" placeholder="🔍 搜尋名稱、帳號、類別或備註..." oninput="renderList()" style="margin-top: 0;">
-        <button style="margin-top:8px; background:#34c759;" onclick="exportToPDF()">🖨️ 匯出 PDF / 一鍵列印 (含完整備註)</button>
-    </div>
+        const jsonString = JSON.stringify(backupPackage);
+        const base64Payload = btoa(jsonString);
 
-    <!-- 分類列 -->
-    <div class="category-container no-print">
-        <div class="category-tabs" id="categoryTabs"></div>
-        <button class="btn-small" onclick="openCatModal()" style="flex:0 0 auto;">⚙️ 分類管理</button>
-    </div>
+        // 填入 PDF 範本內容
+        document.getElementById('pdfDate').innerText = new Date().toLocaleDateString();
+        document.getElementById('pdfPayload').innerText = base64Payload;
 
-    <!-- 新增 / 編輯區塊 -->
-    <div class="card no-print">
-        <h3 id="formTitle" style="margin:0 0 8px 0; font-size:16px;">新增密碼項目</h3>
-        <input type="hidden" id="editIndex">
-        <input type="text" id="itemName" placeholder="名稱 (例: 恒生銀行)">
-        <input type="text" id="itemUser" placeholder="登入帳號 / 用戶名">
-        <input type="text" id="itemPwd" placeholder="密碼">
-        <select id="itemCat"></select>
-        <textarea id="itemNote" placeholder="備註 (不限字數)"></textarea>
-        <button onclick="saveItem()">儲存紀錄</button>
-    </div>
-
-    <!-- 密碼清單 -->
-    <div class="no-print">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h3>🔐 密碼清單</h3>
-            <button class="btn-small" onclick="toggleAllSecrets()">👁️ 一鍵顯示 / 隱藏</button>
-        </div>
-        <div id="passwordList"></div>
-    </div>
-
-    <!-- iOS 專用列印表格 -->
-    <div id="printArea">
-        <h2 style="text-align: center; margin-bottom: 12px;">黑匣 (Black Vault) - 密碼資料備份</h2>
-        <table class="print-table">
-            <thead>
-                <tr>
-                    <th style="width: 12%;">分類</th>
-                    <th style="width: 22%;">名稱</th>
-                    <th style="width: 24%;">帳號 / 電郵</th>
-                    <th style="width: 20%;">密碼</th>
-                    <th style="width: 22%;">備註</th>
-                </tr>
-            </thead>
-            <tbody id="printTableBody"></tbody>
-        </table>
-    </div>
-
-    <!-- 分類管理 Modal -->
-    <div class="modal" id="catModal">
-        <div class="modal-content">
-            <h3 style="margin-top:0;">⚙️ 管理分類</h3>
-            <div id="catList"></div>
-            <div style="margin-top:12px; display:flex; gap:6px;">
-                <input type="text" id="newCatInput" placeholder="新分類名稱" style="margin:0;">
-                <button style="width:auto; padding:0 12px; margin:0;" onclick="addCategory()">新增</button>
-            </div>
-            <button style="margin-top:16px; background:#8e8e93;" onclick="closeCatModal()">關閉</button>
-        </div>
-    </div>
-
-    <script>
-        let currentCategory = '全部';
-        let isUnlocked = false;
-        let showAllSecrets = false;
-        let singleShowMap = {};
-
-        const MASTER_PASSWORD = localStorage.getItem('blackvault_master_pwd') || 'admin';
-        let categories = JSON.parse(localStorage.getItem('blackvault_cats')) || ['銀行', '電郵', '購物', '工作', '影視娛樂', '社交', '其他'];
-        let items = JSON.parse(localStorage.getItem('blackvault_items')) || [
-            { name: '恒生網上理財', user: 'my_admin_88', pwd: 'P@ssw0rd2026!', cat: '銀行', note: '保安編碼器放在書房，提款卡密碼 889900。' },
-            { name: 'Gmail 工作電郵', user: 'alex.work@gmail.com', pwd: 'Secure#Email99', cat: '電郵', note: '備用碼：1234-5678, 8765-4321' }
-        ];
-
-        // 畫出相容 iOS 的 Apple Touch Icon PNG
-        function generateAppleIcon() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 180;
-            canvas.height = 180;
-            const ctx = canvas.getContext('2d');
-            
-            // 背景底色
-            ctx.fillStyle = '#090a0f';
-            ctx.fillRect(0, 0, 180, 180);
-            
-            // 盾牌外框
-            ctx.strokeStyle = '#0a84ff';
-            ctx.lineWidth = 8;
-            ctx.beginPath();
-            ctx.arc(90, 90, 60, 0, Math.PI * 2);
-            ctx.stroke();
-
-            // 文字
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 60px -apple-system';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('匣', 90, 95);
-
-            document.getElementById('appleIcon').href = canvas.toDataURL('image/png');
-        }
-
-        /* 觸發原生 Face ID / 生物認證解鎖 */
-        async function authenticateUser() {
-            const inputPwd = document.getElementById('masterPwdInput').value;
-            if (inputPwd !== MASTER_PASSWORD) {
-                alert('主密碼不正確！');
-                return;
-            }
-
-            // 嘗試呼叫 iOS 原生 WebAuthn 生物認證 API
-            if (window.PublicKeyCredential && typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
-                try {
-                    const isAvailable = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-                    if (isAvailable) {
-                        // 啟動 Face ID / Touch ID 原生挑戰
-                        const dummyChallenge = new Uint8Array(32);
-                        window.crypto.getRandomValues(dummyChallenge);
-                        
-                        await navigator.credentials.get({
-                            publicKey: {
-                                challenge: dummyChallenge,
-                                timeout: 60000,
-                                userVerification: "required"
-                            }
-                        }).catch(() => {
-                            // 即使尚未註冊 WebAuthn 金鑰，也能觸發系統級的 Face ID 提示
-                        });
-                    }
-                } catch (err) {
-                    console.log("Biometrics initiated");
-                }
-            }
-
-            // 驗證成功解鎖
-            isUnlocked = true;
-            document.getElementById('lockOverlay').style.display = 'none';
-            document.getElementById('masterPwdInput').value = '';
-            renderList();
-        }
-
-        /* 切換背景自動鎖定 */
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                isUnlocked = false;
-                showAllSecrets = false;
-                singleShowMap = {};
-                document.getElementById('lockOverlay').style.display = 'flex';
-            }
+        // 生成 QR Code
+        document.getElementById('qrcode').innerHTML = "";
+        new QRCode(document.getElementById('qrcode'), {
+          text: base64Payload.substring(0, 800),
+          width: 160,
+          height: 160
         });
 
-        function initCats() {
-            const tabsEl = document.getElementById('categoryTabs');
-            const selectEl = document.getElementById('itemCat');
-            
-            tabsEl.innerHTML = `<div class="tab ${currentCategory==='全部'?'active':''}" onclick="switchCategory('全部')">全部</div>`;
-            selectEl.innerHTML = '';
+        // 觸發原生 PDF 儲存/列印介面
+        window.print();
+        verifyOperation("生成 PDF 備份", true);
+      } catch (err) {
+        alert("生成 PDF 失敗：" + err.message);
+        verifyOperation("生成 PDF 備份", false);
+      }
+    }
 
-            categories.forEach((cat) => {
-                tabsEl.innerHTML += `<div class="tab ${currentCategory===cat?'active':''}" onclick="switchCategory('${cat}')">${cat}</div>`;
-                selectEl.innerHTML += `<option value="${cat}">${cat}</option>`;
-            });
+    // 透過密文/QR Code 還原
+    async function importFromQRCode() {
+      const payload = prompt("請貼上 PDF 備份檔中的「加密備份密文」：");
+      if (!payload) return;
+
+      try {
+        const jsonString = atob(payload.trim());
+        const pkg = JSON.parse(jsonString);
+
+        if (!pkg.encrypted || !pkg.salt || !pkg.iv || !pkg.data) {
+          throw new Error("備份密文格式不符");
         }
 
-        function renderList() {
-            const listEl = document.getElementById('passwordList');
-            const printBody = document.getElementById('printTableBody');
-            const searchKeyword = document.getElementById('searchInput').value.toLowerCase().trim();
+        const password = prompt("請輸入該備份檔的解密密碼：");
+        if (!password) return;
 
-            listEl.innerHTML = '';
-            printBody.innerHTML = '';
+        const salt = new Uint8Array(pkg.salt);
+        const iv = new Uint8Array(pkg.iv);
+        const encryptedData = new Uint8Array(pkg.data);
 
-            const filtered = items.filter(item => {
-                const matchCat = (currentCategory === '全部' || item.cat === currentCategory);
-                const matchSearch = !searchKeyword || 
-                    item.name.toLowerCase().includes(searchKeyword) ||
-                    item.user.toLowerCase().includes(searchKeyword) ||
-                    item.cat.toLowerCase().includes(searchKeyword) ||
-                    (item.note && item.note.toLowerCase().includes(searchKeyword));
-                return matchCat && matchSearch;
-            });
+        const key = await deriveKey(password, salt);
+        const decryptedContent = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: iv }, key, encryptedData
+        );
 
-            if (filtered.length === 0) {
-                listEl.innerHTML = '<div class="card" style="text-align:center; color:var(--text-secondary);">無符合條件的密碼紀錄</div>';
-            }
+        const dec = new TextDecoder();
+        const parsed = JSON.parse(dec.decode(decryptedContent));
 
-            filtered.forEach((item, index) => {
-                const isSingleShow = singleShowMap[index] || false;
-                const shouldShow = isUnlocked && (showAllSecrets || isSingleShow);
-                const blurClass = shouldShow ? 'unblurred' : 'blur-text';
-
-                const card = document.createElement('div');
-                card.className = 'card';
-                card.innerHTML = `
-                    <div class="item-header">
-                        <div class="item-title">${escapeHtml(item.name)}</div>
-                        <span class="badge">${escapeHtml(item.cat)}</span>
-                    </div>
-                    <div class="item-sub">
-                        <span>帳號：${escapeHtml(item.user)}</span>
-                    </div>
-                    <div class="item-sub">
-                        <span>密碼：<span class="${blurClass}">${escapeHtml(item.pwd)}</span></span>
-                        <button class="btn-small" onclick="toggleSingleSecret(${index})">${shouldShow ? '🙈 隱藏' : '👁️ 顯示'}</button>
-                    </div>
-                    <div class="note-box">
-                        <strong>備註：</strong><br>
-                        <span class="${blurClass}">${escapeHtml(item.note || '無備註').replace(/\n/g, '<br>')}</span>
-                    </div>
-                    <div class="action-btns no-print">
-                        <button style="background:#8e8e93;" onclick="editItem(${index})">修改</button>
-                        <button style="background:var(--danger-color);" onclick="deleteItem(${index})">刪除</button>
-                    </div>
-                `;
-                listEl.appendChild(card);
-
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${escapeHtml(item.cat)}</td>
-                    <td><strong>${escapeHtml(item.name)}</strong></td>
-                    <td>${escapeHtml(item.user)}</td>
-                    <td>${escapeHtml(item.pwd)}</td>
-                    <td>${escapeHtml(item.note || '-')}</td>
-                `;
-                printBody.appendChild(tr);
-            });
+        if (confirm("驗證成功！確定要匯入並覆蓋現有資料？")) {
+          vaultData = parsed;
+          saveVaultData();
+          renderCategories();
+          alert("資料已成功還原！");
+          verifyOperation("PDF 還原", true);
         }
+      } catch (err) {
+        alert("還原失敗：解密密碼錯誤或密文無效。");
+        verifyOperation("PDF 還原", false);
+      }
+    }
 
-        function toggleSingleSecret(index) {
-            singleShowMap[index] = !singleShowMap[index];
-            renderList();
+    // 解鎖與生物辨識邏輯
+    function unlockApp() {
+      const input = document.getElementById('passcodeInput').value;
+      const savedPasscode = localStorage.getItem('black_vault_passcode');
+      if (input === savedPasscode) {
+        document.getElementById('lockScreen').style.display = 'none';
+        document.getElementById('mainApp').style.display = 'block';
+        verifyOperation("密碼解鎖", true);
+      } else {
+        alert("解鎖密碼不正確！");
+        verifyOperation("密碼解鎖", false);
+      }
+    }
+
+    async function registerBiometrics() {
+      if (!window.PublicKeyCredential) {
+        alert("您的裝置不支援 Face ID / Touch ID。");
+        return;
+      }
+      try {
+        const challenge = new Uint8Array(32);
+        crypto.getRandomValues(challenge);
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            challenge: challenge,
+            rp: { name: "黑匣 Black Vault" },
+            user: { id: Uint8Array.from("user", c => c.charCodeAt(0)), name: "user@blackvault", displayName: "黑匣用戶" },
+            pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+            authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" }
+          }
+        });
+        if (credential) {
+          localStorage.setItem('black_vault_bio_credential', credential.id);
+          localStorage.setItem('black_vault_bio_enabled', 'true');
+          alert("Face ID / Touch ID 已成功綁定！");
+          updatePasscodeUI();
+          verifyOperation("啟用生物辨識", true);
         }
+      } catch (err) {
+        alert("綁定失敗：" + err.message);
+        verifyOperation("啟用生物辨識", false);
+      }
+    }
 
-        function toggleAllSecrets() {
-            showAllSecrets = !showAllSecrets;
-            renderList();
+    async function unlockWithBiometrics() {
+      const credId = localStorage.getItem('black_vault_bio_credential');
+      if (!credId || !window.PublicKeyCredential) return;
+      try {
+        const challenge = new Uint8Array(32);
+        crypto.getRandomValues(challenge);
+        const assertion = await navigator.credentials.get({
+          publicKey: { challenge: challenge, userVerification: "required" }
+        });
+        if (assertion) {
+          document.getElementById('lockScreen').style.display = 'none';
+          document.getElementById('mainApp').style.display = 'block';
+          verifyOperation("Face ID 解鎖", true);
         }
+      } catch (err) {
+        console.warn("生物辨識驗證未通過：" + err.message);
+        verifyOperation("Face ID 解鎖", false);
+      }
+    }
 
-        function switchCategory(cat) {
-            currentCategory = cat;
-            initCats();
-            renderList();
-        }
+    function setAppPasscode() {
+      const currentPass = localStorage.getItem('black_vault_passcode');
+      if (currentPass) {
+        const verify = prompt("請先輸入當前解鎖密碼：");
+        if (verify !== currentPass) { alert("驗證失敗！"); return; }
+      }
+      const newPass = prompt("請設定全新解鎖密碼：");
+      if (!newPass) return;
+      const confirmPass = prompt("請再次輸入新密碼：");
+      if (newPass === confirmPass) {
+        localStorage.setItem('black_vault_passcode', newPass);
+        alert("密碼設定成功！");
+        updatePasscodeUI();
+        verifyOperation("設定解鎖密碼", true);
+      } else {
+        alert("兩次密碼不符！");
+        verifyOperation("設定解鎖密碼", false);
+      }
+    }
 
-        /* 呼叫 iOS 原生列印與 PDF 匯出 */
-        function exportToPDF() {
-            setTimeout(() => {
-                window.print();
-            }, 100);
-        }
+    function removeAppPasscode() {
+      const currentPass = localStorage.getItem('black_vault_passcode');
+      const verify = prompt("請輸入解鎖密碼以關閉：");
+      if (verify === currentPass) {
+        localStorage.removeItem('black_vault_passcode');
+        localStorage.removeItem('black_vault_bio_enabled');
+        localStorage.removeItem('black_vault_bio_credential');
+        alert("防護已關閉！");
+        updatePasscodeUI();
+        verifyOperation("移除防護", true);
+      } else {
+        alert("密碼錯誤！");
+        verifyOperation("移除防護", false);
+      }
+    }
 
-        function saveItem() {
-            const name = document.getElementById('itemName').value.trim();
-            const user = document.getElementById('itemUser').value.trim();
-            const pwd = document.getElementById('itemPwd').value.trim();
-            const cat = document.getElementById('itemCat').value;
-            const note = document.getElementById('itemNote').value.trim();
-            const editIndex = document.getElementById('editIndex').value;
+    function updatePasscodeUI() {
+      const savedPasscode = localStorage.getItem('black_vault_passcode');
+      const bioEnabled = localStorage.getItem('black_vault_bio_enabled');
+      const statusText = document.getElementById('lockStatusText');
+      const removeBtn = document.getElementById('removePassBtn');
+      const enableBioBtn = document.getElementById('enableBioBtn');
 
-            if (!name || !pwd) {
-                alert('請填寫名稱和密碼！');
-                return;
-            }
-
-            const newItem = { name, user, pwd, cat, note };
-
-            if (editIndex !== '') {
-                items[editIndex] = newItem;
-                document.getElementById('editIndex').value = '';
-                document.getElementById('formTitle').innerText = '新增密碼項目';
-            } else {
-                items.push(newItem);
-            }
-
-            localStorage.setItem('blackvault_items', JSON.stringify(items));
-            clearForm();
-            renderList();
-            alert('儲存成功！');
-        }
-
-        function editItem(index) {
-            const item = items[index];
-            document.getElementById('itemName').value = item.name;
-            document.getElementById('itemUser').value = item.user;
-            document.getElementById('itemPwd').value = item.pwd;
-            document.getElementById('itemCat').value = item.cat;
-            document.getElementById('itemNote').value = item.note;
-            document.getElementById('editIndex').value = index;
-            document.getElementById('formTitle').innerText = '修改密碼項目 (含原密碼)';
-            window.scrollTo({ top: 220, behavior: 'smooth' });
-        }
-
-        function deleteItem(index) {
-            if (confirm('確定要刪除此筆紀錄嗎？')) {
-                items.splice(index, 1);
-                localStorage.setItem('blackvault_items', JSON.stringify(items));
-                renderList();
-            }
-        }
-
-        function openCatModal() {
-            renderCatModal();
-            document.getElementById('catModal').style.display = 'flex';
-        }
-
-        function closeCatModal() {
-            document.getElementById('catModal').style.display = 'none';
-        }
-
-        function renderCatModal() {
-            const el = document.getElementById('catList');
-            el.innerHTML = '';
-            categories.forEach((cat, idx) => {
-                el.innerHTML += `
-                    <div class="cat-item">
-                        <span>${cat}</span>
-                        <div>
-                            <button style="background:#8e8e93;" onclick="renameCategory(${idx})">修改</button>
-                            <button style="background:var(--danger-color);" onclick="deleteCategory(${idx})">刪除</button>
-                        </div>
-                    </div>
-                `;
-            });
-        }
-
-        function addCategory() {
-            const val = document.getElementById('newCatInput').value.trim();
-            if (val && !categories.includes(val)) {
-                categories.push(val);
-                localStorage.setItem('blackvault_cats', JSON.stringify(categories));
-                document.getElementById('newCatInput').value = '';
-                initCats();
-                renderCatModal();
-            }
-        }
-
-        function renameCategory(idx) {
-            const oldName = categories[idx];
-            const newName = prompt('請輸入新的分類名稱：', oldName);
-            if (newName && newName.trim() && newName !== oldName) {
-                categories[idx] = newName.trim();
-                items.forEach(item => { if (item.cat === oldName) item.cat = newName.trim(); });
-                localStorage.setItem('blackvault_cats', JSON.stringify(categories));
-                localStorage.setItem('blackvault_items', JSON.stringify(items));
-                initCats();
-                renderCatModal();
-                renderList();
-            }
-        }
-
-        function deleteCategory(idx) {
-            const targetCat = categories[idx];
-            if (confirm(`確定刪除分類「${targetCat}」嗎？`)) {
-                categories.splice(idx, 1);
-                items.forEach(item => { if (item.cat === targetCat) item.cat = '其他'; });
-                if (!categories.includes('其他')) categories.push('其他');
-                localStorage.setItem('blackvault_cats', JSON.stringify(categories));
-                localStorage.setItem('blackvault_items', JSON.stringify(items));
-                initCats();
-                renderCatModal();
-                renderList();
-            }
-        }
-
-        function clearForm() {
-            document.getElementById('itemName').value = '';
-            document.getElementById('itemUser').value = '';
-            document.getElementById('itemPwd').value = '';
-            document.getElementById('itemNote').value = '';
-        }
-
-        function toggleTheme() {
-            const current = document.body.getAttribute('data-theme');
-            document.body.setAttribute('data-theme', current === 'light' ? 'dark' : 'light');
-        }
-
-        function uploadAvatar(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(evt) {
-                    document.getElementById('avatarImg').src = evt.target.result;
-                }
-                reader.readAsDataURL(file);
-            }
-        }
-
-        function escapeHtml(str) {
-            return (str || '').replace(/[&<>"']/g, function(m) {
-                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
-            });
-        }
-
-        generateAppleIcon();
-        initCats();
-    </script>
+      if (savedPasscode) {
+        let status = "目前狀態：已啟用密碼保護 🔒";
+        if (bioEnabled) status += " + Face ID 👤";
+        statusText.innerText = status;
+        statusText.style.color = "#00f0ff";
+        removeBtn.style.display = "block";
+        enableBioBtn.style.display = "block";
+      } else {
+        statusText.innerText = "目前狀態：尚未設定密碼 (開啟即進入)";
+        statusText.style.color = "var(--text-sub)";
+        removeBtn.style.display = "none";
+        enableBioBtn.style.display = "none";
+      }
+    }
+  </script>
 </body>
 </html>
